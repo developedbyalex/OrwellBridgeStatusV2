@@ -1,103 +1,379 @@
-import Image from "next/image";
+"use client";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Thermometer, Wind, ArrowUp, Navigation, Clock, AlertTriangle, Gauge } from "lucide-react";
+import { useState, useEffect } from "react";
+import { BridgeStatusRecord, BridgeStatusResponse, WeatherResponse, TrafficDirections } from "@/types/bridge";
+
+type LaneStatus = "open" | "delayed" | "closed" | "unknown";
+
+interface BridgeStatus {
+  eastbound: LaneStatus;
+  westbound: LaneStatus;
+  lastUpdated: string;
+  isRealTime: boolean;
+}
+
+interface WeatherData {
+  temperature: number;
+  windSpeed: number;
+  windDirection: number;
+  description: string;
+  icon: string;
+}
+
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>({
+    eastbound: "unknown",
+    westbound: "unknown",
+    lastUpdated: new Date().toLocaleTimeString(),
+    isRealTime: false
+  });
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [weather, setWeather] = useState<WeatherData>({
+    temperature: 12,
+    windSpeed: 25,
+    windDirection: 270,
+    description: "Loading...",
+    icon: "❓"
+  });
+
+  const [bridgeStatusHistory, setBridgeStatusHistory] = useState<BridgeStatusRecord[]>([]);
+  const [pastEvents, setPastEvents] = useState<BridgeStatusRecord[]>([]);
+  const [trafficData, setTrafficData] = useState<TrafficDirections | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBridgeStatusHistory = async () => {
+      try {
+        const [bridgeResponse, weatherResponse, eventsResponse] = await Promise.all([
+          fetch('/api/bridge-status'),
+          fetch('/api/weather'),
+          fetch('/api/events')
+        ]);
+
+        const bridgeResult: BridgeStatusResponse = await bridgeResponse.json();
+        const weatherResult: WeatherResponse = await weatherResponse.json();
+        const eventsResult = await eventsResponse.json();
+
+        if (bridgeResult.success) {
+          setBridgeStatusHistory(bridgeResult.data);
+
+          // Update current bridge status
+          if (bridgeResult.trafficData) {
+            const { directions } = bridgeResult.trafficData;
+            setBridgeStatus(prev => ({
+              ...prev,
+              eastbound: directions.eastbound.status.toLowerCase() as LaneStatus,
+              westbound: directions.westbound.status.toLowerCase() as LaneStatus,
+              isRealTime: !!bridgeResult.realTime
+            }));
+            setTrafficData(directions);
+          } else if (bridgeResult.data.length > 0) {
+            // Fallback to using latest record
+            const latest = bridgeResult.data[0];
+            const currentStatus = latest.status.toLowerCase() as LaneStatus;
+            setBridgeStatus(prev => ({
+              ...prev,
+              eastbound: currentStatus,
+              westbound: currentStatus,
+              isRealTime: false
+            }));
+          }
+        }
+
+        if (weatherResult.success) {
+          setWeather(weatherResult.data);
+        }
+
+        // Handle events data - could be array of events or message object
+
+        if (Array.isArray(eventsResult)) {
+          setPastEvents(eventsResult);
+        } else if (eventsResult && eventsResult.message) {
+          setPastEvents([]);
+        } else {
+          setPastEvents([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      } finally {
+        setLoading(false);
+        setEventsLoading(false);
+      }
+    };
+
+    fetchBridgeStatusHistory();
+
+    const interval = setInterval(() => {
+      setBridgeStatus(prev => ({
+        ...prev,
+        lastUpdated: new Date().toLocaleTimeString()
+      }));
+      fetchBridgeStatusHistory();
+    }, 1800000); // 30 minutes like the original script
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const getStatusColor = (status: LaneStatus) => {
+    switch (status) {
+      case "open": return "bg-green-500";
+      case "delayed": return "bg-yellow-500";
+      case "closed": return "bg-red-500";
+      case "unknown": return "bg-gray-500";
+      default: return "bg-gray-500";
+    }
+  };
+
+  const getStatusText = (status: LaneStatus) => {
+    switch (status) {
+      case "open": return "Open";
+      case "delayed": return "Delays";
+      case "closed": return "Closed";
+      case "unknown": return "Unknown";
+      default: return "Unknown";
+    }
+  };
+
+  const getWindDirection = (degrees: number) => {
+    const directions = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+    return directions[Math.round(degrees / 22.5) % 16];
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return {
+      date: date.toLocaleDateString('en-GB'),
+      time: date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    };
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'open': return 'bg-green-500';
+      case 'delayed': return 'bg-yellow-500';
+      case 'closed': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background p-4">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <header className="text-center py-6">
+          <h1 className="text-4xl font-bold text-foreground mb-2">Orwell Bridge Status</h1>
+          <p className="text-muted-foreground">Live updates on bridge conditions and weather</p>
+          <p className="text-sm text-muted-foreground mt-2">
+            Last updated: {bridgeStatus.lastUpdated}
+          </p>
+          {bridgeStatus.isRealTime && (
+            <div className="inline-flex items-center gap-1 mt-2 px-2 py-1 bg-slate-100 border border-green-500 rounded-md">
+              <span className="text-green-600 text-sm font-medium">• Live Data</span>
+            </div>
+          )}
+        </header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Navigation className="h-6 w-6" />
+                  Bridge Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg">Eastbound (Ipswich to Felixstowe)</h3>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full ${getStatusColor(bridgeStatus.eastbound)}`}></div>
+                      <Badge variant={bridgeStatus.eastbound === "open" ? "default" : bridgeStatus.eastbound === "delayed" ? "secondary" : "destructive"}>
+                        {getStatusText(bridgeStatus.eastbound)}
+                      </Badge>
+                      {trafficData?.eastbound && (
+                        <span className="text-sm text-muted-foreground">
+                          {trafficData.eastbound.averageSpeed} mph
+                        </span>
+                      )}
+                    </div>
+                    {bridgeStatus.eastbound === "delayed" && trafficData?.eastbound && (
+                      <Alert>
+                        <Clock className="h-4 w-4" />
+                        <AlertDescription>
+                          {trafficData.eastbound.details}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <h3 className="font-semibold text-lg">Westbound (Felixstowe to Ipswich)</h3>
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full ${getStatusColor(bridgeStatus.westbound)}`}></div>
+                      <Badge variant={bridgeStatus.westbound === "open" ? "default" : bridgeStatus.westbound === "delayed" ? "secondary" : "destructive"}>
+                        {getStatusText(bridgeStatus.westbound)}
+                      </Badge>
+                      {trafficData?.westbound && (
+                        <span className="text-sm text-muted-foreground">
+                          {trafficData.westbound.averageSpeed} mph
+                        </span>
+                      )}
+                    </div>
+                    {bridgeStatus.westbound === "delayed" && trafficData?.westbound && (
+                      <Alert>
+                        <Clock className="h-4 w-4" />
+                        <AlertDescription>
+                          {trafficData.westbound.details}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Thermometer className="h-6 w-6" />
+                  Weather Conditions
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Conditions</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{weather.icon}</span>
+                    <span className="text-sm">{weather.description}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Temperature</span>
+                  <span className="text-2xl font-bold">{weather.temperature}°C</span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Wind Speed</span>
+                  <div className="flex items-center gap-2">
+                    <Wind className="h-4 w-4" />
+                    <span className="text-lg font-semibold">{weather.windSpeed} mph</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Wind Direction</span>
+                  <div className="flex items-center gap-2">
+                    <ArrowUp
+                      className="h-4 w-4"
+                      style={{ transform: `rotate(${weather.windDirection}deg)` }}
+                    />
+                    <span className="text-lg font-semibold">{getWindDirection(weather.windDirection)}</span>
+                  </div>
+                </div>
+
+                {weather.windSpeed > 30 && (
+                  <Alert className="mt-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      High wind warning - Bridge may be restricted for high-sided vehicles
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-6 w-6" />
+                  Past Events
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="max-h-[600px] overflow-y-auto">
+                {eventsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-muted-foreground">Loading past events...</div>
+                  </div>
+                ) : pastEvents.length === 0 ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-muted-foreground">No recent events found</div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {pastEvents.slice(0, 5).map((record) => {
+                      const { date, time } = formatTimestamp(record.timestamp);
+                      return (
+                        <div key={record._id} className="flex items-start gap-2 p-2 border rounded-md hover:bg-muted/50 transition-colors">
+                          <div className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${getStatusIcon(record.status)}`}></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1 mb-1 flex-wrap">
+                              <span className="font-medium text-xs">{date}</span>
+                              <span className="text-xs text-muted-foreground">{time}</span>
+                              <Badge variant="outline" className="text-xs px-1 py-0 h-4">
+                                {record.status}
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs px-1 py-0 h-4">
+                                {record.direction}
+                              </Badge>
+                              {record.averageSpeed && (
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                  <Gauge className="h-2.5 w-2.5" />
+                                  {record.averageSpeed}mph
+                                </div>
+                              )}
+                            </div>
+                            <p className="text-xs text-foreground leading-tight truncate" title={record.description}>
+                              {record.description}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {pastEvents.length > 5 && (
+                      <div className="text-center pt-2">
+                        <span className="text-xs text-muted-foreground">
+                          Showing 5 most recent events
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        <footer className="mt-12 py-8 border-t border-border">
+          <div className="text-center space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Created with ❤️ by Alex
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Data provided by TomTom Traffic API and Open-Meteo
+            </p>
+            <div className="flex justify-center">
+              <a
+                href="https://ko-fi.com/alexbaldry"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                ☕ Buy me a Red Bull
+              </a>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
   );
 }
