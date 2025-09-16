@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# API endpoints - allow indexing for transparency
+Allow: /api/bridge-status
+Allow: /api/events
+Allow: /api/weather
+
+# Sitemap
+Sitemap: https://orwellbridgestatus.vercel.app/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
