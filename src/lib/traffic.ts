@@ -28,6 +28,16 @@ export interface OverallStatus {
   details: string;
 }
 
+interface TomTomSegmentData {
+  currentSpeed?: number;
+  freeFlowSpeed?: number;
+  roadClosure?: boolean;
+}
+
+interface TomTomResponse {
+  flowSegmentData: TomTomSegmentData;
+}
+
 function validateCoordinates(point: string): boolean {
   const [lat, lon] = point.split(',').map(Number);
   return !isNaN(lat) && !isNaN(lon) &&
@@ -37,7 +47,7 @@ function validateCoordinates(point: string): boolean {
 
 function analyzeBridgeStatus(trafficData: unknown): Omit<TrafficData, 'description'> {
   try {
-    if (!trafficData || !trafficData.flowSegmentData) {
+    if (!trafficData || typeof trafficData !== 'object' || !('flowSegmentData' in trafficData)) {
       return {
         status: 'UNKNOWN',
         details: 'No traffic data available',
@@ -45,7 +55,7 @@ function analyzeBridgeStatus(trafficData: unknown): Omit<TrafficData, 'descripti
       };
     }
 
-    const segment = trafficData.flowSegmentData;
+    const segment = (trafficData as TomTomResponse).flowSegmentData;
     let status: 'OPEN' | 'DELAYED' | 'CLOSED' | 'UNKNOWN';
     let details: string;
     const averageSpeed = segment.currentSpeed || 0;
@@ -114,7 +124,7 @@ export async function getBridgeTrafficData(): Promise<{
   timestamp: Date;
 }> {
   const directions = ['eastbound', 'westbound'] as const;
-  const directionalStatus: Record<string, TrafficData> = {};
+  const directionalStatus = {} as DirectionalStatus;
 
   for (const direction of directions) {
     const point = BRIDGE_POINTS[direction].point;

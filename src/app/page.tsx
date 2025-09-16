@@ -41,10 +41,8 @@ export default function Home() {
     icon: "❓"
   });
 
-  const [bridgeStatusHistory, setBridgeStatusHistory] = useState<BridgeStatusRecord[]>([]);
   const [pastEvents, setPastEvents] = useState<BridgeStatusRecord[]>([]);
   const [trafficData, setTrafficData] = useState<TrafficDirections | null>(null);
-  const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(true);
 
   useEffect(() => {
@@ -61,7 +59,6 @@ export default function Home() {
         const eventsResult = await eventsResponse.json();
 
         if (bridgeResult.success) {
-          setBridgeStatusHistory(bridgeResult.data);
 
           // Update current bridge status
           if (bridgeResult.trafficData) {
@@ -102,7 +99,6 @@ export default function Home() {
       } catch (error) {
         console.error('Failed to fetch data:', error);
       } finally {
-        setLoading(false);
         setEventsLoading(false);
       }
     };

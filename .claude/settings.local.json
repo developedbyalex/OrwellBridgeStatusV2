@@ -14,7 +14,10 @@
       "Bash(node:*)",
       "Bash(MONGODB_URI=\"mongodb+srv://OBS:qYW3it87O18w8kXw@paststatus.b6fbj.mongodb.net/paststatus?retryWrites=true&w=majority&ssl=true&tlsAllowInvalidCertificates=true\" node remove-event.js)",
       "Bash(del remove-event.js)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
